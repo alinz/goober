@@ -78,6 +78,10 @@ func (p *Peanut) Yum(content string) *Peanut {
 // returns an error if errors happen
 func (p *Peanut) Burp() error {
 	cmd := exec.Command(p.cmd, p.args...)
+	defer func() {
+		p.args = p.args[:cap(p.args)]
+		p.cmd = ""
+	}()
 
 	var out bytes.Buffer
 	cmd.Stderr = &out
