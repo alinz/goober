@@ -61,6 +61,9 @@ func (p *Peanut) Yum(content string) *Peanut {
 
 	for _, line := range lines {
 		for key, value := range p.env {
+			if strings.Index(key, "$") == -1 {
+				key = "$" + key
+			}
 			line = strings.Replace(line, key, value, -1)
 		}
 
@@ -79,14 +82,12 @@ func (p *Peanut) Yum(content string) *Peanut {
 func (p *Peanut) Burp() error {
 	cmd := exec.Command(p.cmd, p.args...)
 	defer func() {
-		p.args = p.args[:cap(p.args)]
+		p.args = p.args[0:0]
 		p.cmd = ""
 	}()
 
 	var out bytes.Buffer
 	cmd.Stderr = &out
-
-	cmd.StdoutPipe()
 
 	err := cmd.Run()
 	if err != nil {
