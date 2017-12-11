@@ -86,6 +86,13 @@ func (p *Peanut) Burp() error {
 		p.cmd = ""
 	}()
 
+	env := make([]string, 0)
+	for key, value := range p.env {
+		env = append(env, fmt.Sprintf("%s=%s", key, value))
+	}
+
+	cmd.Env = env
+
 	var out bytes.Buffer
 	cmd.Stderr = &out
 
