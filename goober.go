@@ -86,6 +86,8 @@ func (p *Peanut) Burp() error {
 	var out bytes.Buffer
 	cmd.Stderr = &out
 
+	cmd.StdoutPipe()
+
 	err := cmd.Run()
 	if err != nil {
 		return fmt.Errorf(out.String())
