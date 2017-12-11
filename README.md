@@ -24,24 +24,23 @@ func main() {
 	err = peanut.
 		Yum("touch").
 		Yum("./awesome.txt").
-    Burp()
+		Burp()
 
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	err = peanut.
-    Yum(`
+		Yum(`
 
       touch ./awesome2.txt
 
-
-
     `).
-    Burp()
+		Burp()
 
-  if err != nil {
+	if err != nil {
 		log.Fatal(err)
 	}
 }
+
 ```
