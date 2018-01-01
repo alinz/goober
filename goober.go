@@ -70,7 +70,8 @@ func (p *Peanut) Yum(content string) *Peanut {
 		if p.cmd == "" {
 			p.cmd = line
 		} else {
-			p.args = append(p.args, line)
+			doubleCheckLines := strings.Fields(line)
+			p.args = append(p.args, doubleCheckLines...)
 		}
 	}
 
