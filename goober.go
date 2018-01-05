@@ -6,93 +6,58 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 )
 
-// Option helps chnaging Options
-type Option func(*Peanut) error
+// Goober is a simple interface
+type Goober interface {
+	Yum(args ...interface{}) error
+}
 
-// OptSystemEnv is a optional operation which adds all the system env
-// to the Peanut and each env variable can be accessed by $<name>. e.g. $GOPATH
-func OptSystemEnv() Option {
-	return func(peanut *Peanut) error {
-		if peanut.env == nil {
-			peanut.env = make(map[string]string)
-		}
+type peanut struct {
+	command string
+}
 
-		systemEnvs := os.Environ()
-		for _, systemEnv := range systemEnvs {
-			keyValue := strings.Split(systemEnv, "=")
-			if len(keyValue) == 2 {
-				peanut.env[keyValue[0]] = keyValue[1]
+// Yum this method is thread and can accept optionals arguments
+// and run the command
+func (p *peanut) Yum(args ...interface{}) error {
+	var args2 []interface{}
+	var mapVar map[string]string
+
+	// we are copying the command string
+	// to prevent corruption in multiple go routines.
+	command := p.command
+
+	for _, arg := range args {
+		switch v := arg.(type) {
+		case map[string]string:
+			if mapVar != nil {
+				return fmt.Errorf("multiple maps given")
 			}
+			mapVar = v
+		default:
+			args2 = append(args2, arg)
 		}
-
-		return nil
 	}
-}
 
-// OptCustomEnv adds custom env to internal env which can be accessed by
-// $<name> e.g. $GOPATH
-func OptCustomEnv(env map[string]string) Option {
-	return func(peanut *Peanut) error {
-		if peanut.env == nil {
-			peanut.env = make(map[string]string)
-		}
-
-		for key, value := range env {
-			peanut.env[key] = value
-		}
-
-		return nil
-	}
-}
-
-// Peanut is the minimum requires struct to build goober
-type Peanut struct {
-	env  map[string]string
-	cmd  string
-	args []string
-}
-
-// Yum eats commands and parsed it for later Burp
-// it can be chained
-func (p *Peanut) Yum(content string) *Peanut {
-	lines := strings.Fields(content)
-
-	for _, line := range lines {
-		for key, value := range p.env {
-			if strings.Index(key, "$") == -1 {
+	if mapVar != nil {
+		for key, value := range mapVar {
+			index := strings.Index(key, "$")
+			if index == -1 {
 				key = "$" + key
+			} else if index != 0 {
+				return fmt.Errorf("$ must be the first char for '%s'", key)
 			}
-			line = strings.Replace(line, key, value, -1)
-		}
-
-		if p.cmd == "" {
-			p.cmd = line
-		} else {
-			doubleCheckLines := strings.Fields(line)
-			p.args = append(p.args, doubleCheckLines...)
+			command = strings.Replace(command, key, value, -1)
 		}
 	}
 
-	return p
-}
+	execCommand := fmt.Sprintf(command, args2...)
 
-// Burp tries to executed what has been yummed.
-// returns an error if errors happen
-func (p *Peanut) Burp() error {
-	cmd := exec.Command(p.cmd, p.args...)
-	defer func() {
-		p.args = p.args[0:0]
-		p.cmd = ""
-	}()
+	// fmt.Println(execCommand)
 
-	env := make([]string, 0)
-	for key, value := range p.env {
-		env = append(env, fmt.Sprintf("%s=%s", key, value))
-	}
-
-	cmd.Env = env
+	cmd := exec.Command("bash", "-c", execCommand)
+	cmd.Env = os.Environ()
 
 	var out bytes.Buffer
 	cmd.Stderr = &out
@@ -104,24 +69,50 @@ func (p *Peanut) Burp() error {
 
 	err = cmd.Wait()
 	if err != nil {
-		fmt.Println(out.String())
-
-		return err
+		return fmt.Errorf(out.String())
+		//return err
 	}
 
 	return nil
 }
 
-// New creates Peanut to be consumed and yumed
-// it accepts optional configuration
-func New(options ...Option) (*Peanut, error) {
-	peanut := &Peanut{}
+// New accepts commands with format and returns a Goober object
+func New(format string) Goober {
+	// removed all the line breaks and make the string flat
+	command := strings.Join(strings.Fields(format), " ")
+	return &peanut{
+		command,
+	}
+}
 
-	for _, option := range options {
-		if err := option(peanut); err != nil {
-			return nil, err
+// Logger is a simple type which has the similar signature as Printf
+type Logger func(fmt string, args ...interface{})
+
+// NewLogger creates a Logger object and cleanup function
+// once a logger is created, upon on termination, cleanup fucntion must be called.
+// the best practice is that as soon as logger created, you have to defer the cleanup
+func NewLogger() (logger Logger, cleanup func()) {
+	prevStrLen := 80
+	pipe := make(chan string, 10)
+
+	go func() {
+		for value := range pipe {
+			fmt.Printf("\r%s", value)
 		}
+	}()
+
+	logger = func(format string, values ...interface{}) {
+		pipe <- strings.Repeat(" ", prevStrLen)
+		value := fmt.Sprintf(format, values...)
+		prevStrLen = len(value)
+		pipe <- value
 	}
 
-	return peanut, nil
+	cleanup = func() {
+		logger("")
+		time.Sleep(100 * time.Microsecond)
+		close(pipe)
+	}
+
+	return
 }
